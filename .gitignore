@@ -1,0 +1,42 @@
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Generated image assets (uncomment if you want to version them)
+# images/
+
+# Generated blog output folder (if you use one)
+generated_blogs/
+
+
+
