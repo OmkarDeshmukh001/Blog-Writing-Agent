@@ -247,39 +247,76 @@ Rules:
 
 
 def research_node(state: State) -> dict:
-    queries = (state.get("queries") or [])[:10]
+    queries = (state.get("queries") or [])[:5]
     raw: List[dict] = []
+    seen_urls = set()
+
     for q in queries:
-        raw.extend(_tavily_search(q, max_results=6))
+        results = _tavily_search(q, max_results=3)
+
+        for r in results:
+            url = (r.get("url") or "").strip()
+
+            if url and url in seen_urls:
+                continue
+
+            if url:
+                seen_urls.add(url)
+
+            raw.append({
+                "title": (r.get("title") or "")[:200],
+                "url": url[:500],
+                "snippet": (
+                    r.get("snippet") or ""
+                )[:800],
+                "published_at": r.get("published_at"),
+                "source": r.get("source"),
+            })
+
+            if len(raw) >= 10:
+                break
+
+        if len(raw) >= 10:
+            break
 
     if not raw:
         return {"evidence": []}
 
     extractor = llm.with_structured_output(EvidencePack)
-    pack = extractor.invoke(
-        [
-            SystemMessage(content=RESEARCH_SYSTEM),
-            HumanMessage(
-                content=(
-                    f"As-of date: {state['as_of']}\n"
-                    f"Recency days: {state['recency_days']}\n\n"
-                    f"Raw results:\n{raw}"
-                )
-            ),
-        ]
-    )
+
+    pack = extractor.invoke([
+        SystemMessage(content=RESEARCH_SYSTEM),
+        HumanMessage(content=(
+            f"As-of date: {state['as_of']}\n"
+            f"Recency days: {state['recency_days']}\n\n"
+            "Extract concise, relevant evidence from these search "
+            "results. Preserve source URLs and publication dates. "
+            "Do not invent facts or sources. Return only the most "
+            "useful evidence items.\n\n"
+            f"Raw results:\n{raw}"
+        ))
+    ])
 
     dedup = {}
     for e in pack.evidence:
         if e.url:
             dedup[e.url] = e
+
     evidence = list(dedup.values())
 
     if state.get("mode") == "open_book":
         as_of = date.fromisoformat(state["as_of"])
-        cutoff = as_of - timedelta(days=int(state["recency_days"]))
-        evidence = [e for e in evidence if (
-            d := _iso_to_date(e.published_at)) and d >= cutoff]
+        cutoff = as_of - timedelta(
+            days=int(state["recency_days"])
+        )
+
+        evidence = [
+            e for e in evidence
+            if (
+                (d := _iso_to_date(e.published_at))
+                and d >= cutoff
+            )
+        ]
 
     return {"evidence": evidence}
 
@@ -511,7 +548,8 @@ def _gemini_generate_image_bytes(prompt: str) -> bytes:
     from google import genai
     from google.genai import types
 
-    api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get(
+        "GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GOOGLE_API_KEY (or GEMINI_API_KEY) is not set.")
 
@@ -593,7 +631,8 @@ def generate_and_place_images(state: State) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if not (md or "").strip():
-        logger.warning("Skipping file write: markdown is empty for blog_id=%s", blog_id)
+        logger.warning(
+            "Skipping file write: markdown is empty for blog_id=%s", blog_id)
         return {
             "final": "",
             "image_assets": [],
@@ -608,7 +647,8 @@ def generate_and_place_images(state: State) -> dict:
         try:
             images_dir.mkdir(parents=True, exist_ok=True)
             if not out_path.exists():
-                img_bytes = _gemini_generate_image_bytes(spec.get("prompt") or "")
+                img_bytes = _gemini_generate_image_bytes(
+                    spec.get("prompt") or "")
                 out_path.write_bytes(img_bytes)
             img_md = f"![{spec.get('alt', '')}](images/{filename})\n*{spec.get('caption', '')}*"
             md = md.replace(placeholder, img_md)
@@ -637,7 +677,8 @@ def generate_and_place_images(state: State) -> dict:
         image_errors.append(f"Unreplaced placeholder: {token}")
 
     if not md.strip():
-        logger.warning("Refusing to write empty markdown for blog_id=%s", blog_id)
+        logger.warning(
+            "Refusing to write empty markdown for blog_id=%s", blog_id)
         return {
             "final": "",
             "image_assets": image_assets,
